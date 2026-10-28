@@ -1,6 +1,7 @@
 import { UUID, digitSvg, parseRoute, validateConfig, validateQuestion, validateResults, validateVote } from './shared.js';
 
 const app = document.querySelector('#app');
+const ratingLegends = ['Least: still buffering', 'Prompt-curious', 'In beta', 'Skill-pilled', 'Most: full send'];
 let generation = 0;
 let refreshTimer;
 let refreshCurrent;
@@ -233,10 +234,14 @@ async function showQuestion(config, route, current) {
   }
 
   for (let score = 1; score <= 5; score++) {
+    const choice = element('div', 'rating-choice');
+    const legend = element('p', 'score-legend', ratingLegends[score - 1]);
+    legend.id = `rating-legend-${score}`;
     const button = element('button', 'score-button');
     button.type = 'button';
     button.innerHTML = digitSvg(score);
     button.setAttribute('aria-label', `${score} out of 5`);
+    button.setAttribute('aria-describedby', legend.id);
     button.setAttribute('aria-pressed', 'false');
     button.addEventListener('click', async () => {
       if (busy) return;
@@ -265,7 +270,8 @@ async function showQuestion(config, route, current) {
       }
     });
     buttons.push(button);
-    choices.append(button);
+    choice.append(button, legend);
+    choices.append(choice);
   }
   section.append(choices, status);
   if (saved !== null) showSaved('Your response is saved.');

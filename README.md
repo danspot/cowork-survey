@@ -57,8 +57,9 @@ How useful was this session?
 Which tools would you use? | Cowork | Agents | Both | Not sure
 ```
 
-A plain question uses the original 1-2-3-4-5 rating buttons. A question followed
-by at least two pipe-delimited options uses multi-select checkboxes and a
+A plain question uses the original 1-2-3-4-5 rating buttons, with AI-themed
+captions beneath each number, from **Least: still buffering** to **Most: full send**.
+A question followed by at least two pipe-delimited options uses multi-select checkboxes and a
 **Save answer** button. Options are trimmed and must be distinct and nonempty;
 `|` is reserved as the separator. Each whole line can contain up to 2,000
 characters. Blank lines are ignored, and invalid lines stop generation with

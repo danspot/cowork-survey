@@ -91,7 +91,7 @@ for (const width of [320, 390, 1280]) {
     await page.goto(questionUrl);
     await expect(page.getByRole('heading')).toHaveText(multipleQuestion.prompt);
     await expect(page.getByRole('checkbox')).toHaveCount(7);
-    await expect(page.locator('.score-button, .option-label img')).toHaveCount(0);
+    await expect(page.locator('.score-button, .score-legend, .option-label img')).toHaveCount(0);
     const save = page.getByRole('button', { name: 'Save answer' });
     await expect(save).toBeDisabled();
     await page.getByRole('checkbox', { name: 'Cowork', exact: true }).check();
@@ -255,12 +255,23 @@ for (const width of [320, 375, 390, 768, 1280]) {
     await expect(page.locator('.eyebrow, .description, .fine-print, footer')).toHaveCount(0);
     const buttons = page.getByRole('button', { name: /out of 5/ });
     await expect(buttons).toHaveCount(5);
+    const captions = ['Least: still buffering', 'Prompt-curious', 'In beta', 'Skill-pilled', 'Most: full send'];
+    const legends = page.locator('.score-legend');
+    await expect(legends).toHaveText(captions);
     for (let index = 0; index < 5; index++) {
-      const box = await buttons.nth(index).boundingBox();
+      const button = buttons.nth(index);
+      const box = await button.boundingBox();
       expect(box.width).toBeGreaterThanOrEqual(48);
       expect(box.height).toBeGreaterThanOrEqual(48);
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(width);
+      await expect(button).toHaveAccessibleDescription(captions[index]);
+      await expect(legends.nth(index)).toBeVisible();
+      const legend = await legends.nth(index).boundingBox();
+      expect(legend.y).toBeGreaterThanOrEqual(box.y + box.height);
+      expect(legend.x).toBeGreaterThanOrEqual(0);
+      expect(legend.x + legend.width).toBeLessThanOrEqual(width);
+      expect(Math.abs(legend.x + legend.width / 2 - box.x - box.width / 2)).toBeLessThan(1);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     if (width === 390) {
