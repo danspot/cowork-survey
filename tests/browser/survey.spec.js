@@ -29,11 +29,10 @@ async function backend(page, overrides = {}) {
     const body = route.request().postDataJSON();
     requests.push({ operation, body });
     if (overrides[operation]) return overrides[operation](route, body);
-    if (operation === 'cowork_question') return route.fulfill({ json: { prompt, score: saved } });
+    if (operation === 'cowork_question') return route.fulfill({ json: { prompt, score: saved, editable: true } });
     if (operation === 'cowork_vote') {
-      const recorded = saved === null;
-      saved ??= body.p_score;
-      return route.fulfill({ json: { score: saved, recorded } });
+      saved = body.p_score;
+      return route.fulfill({ json: { score: saved, recorded: true } });
     }
     return route.fulfill({ json: summary([1, 2, 3, 8, 6]) });
   });
@@ -41,11 +40,13 @@ async function backend(page, overrides = {}) {
 }
 
 for (const width of [320, 375, 390, 768, 1280]) {
-  test(`all five choices fit at ${width}px and save a final answer`, async ({ page }) => {
+  test(`all five choices fit at ${width}px and allow answer changes`, async ({ page }) => {
     await page.setViewportSize({ width, height: 812 });
     const requests = await backend(page);
     await page.goto(questionUrl);
     await expect(page.getByRole('heading', { name: prompt })).toBeVisible();
+    await expect(page.locator('.brand')).toHaveText('PPCC 2026 | COWORK ATE MY AGENTS');
+    await expect(page.locator('.eyebrow, .description, .fine-print, footer')).toHaveCount(0);
     const buttons = page.getByRole('button', { name: /out of 5/ });
     await expect(buttons).toHaveCount(5);
     for (let index = 0; index < 5; index++) {
@@ -64,11 +65,17 @@ for (const width of [320, 375, 390, 768, 1280]) {
     await expect(page.getByRole('status')).toContainText('You\'re counted. Thank you!');
     await expect(page.getByRole('status')).toContainText('4 out of 5');
     await expect(buttons.nth(3)).toHaveAttribute('aria-pressed', 'true');
-    for (const button of await buttons.all()) await expect(button).toBeDisabled();
+    for (const button of await buttons.all()) await expect(button).toBeEnabled();
     expect(requests.filter(request => request.operation === 'cowork_vote')).toHaveLength(1);
     await page.reload();
-    await expect(page.getByRole('status')).toContainText('You\'re already counted.');
+    await expect(page.getByRole('status')).toContainText('Your response is saved.');
     await expect(page.getByRole('status')).toContainText('4 out of 5');
+    await page.getByRole('button', { name: '2 out of 5' }).click();
+    await expect(page.getByRole('status')).toContainText('Answer updated.');
+    await expect(page.getByRole('status')).toContainText('2 out of 5');
+    await expect(buttons.nth(1)).toHaveAttribute('aria-pressed', 'true');
+    await expect(buttons.nth(3)).toHaveAttribute('aria-pressed', 'false');
+    expect(requests.filter(request => request.operation === 'cowork_vote')).toHaveLength(2);
   });
 }
 
@@ -83,23 +90,89 @@ test('keyboard users can answer without a pointer', async ({ page }) => {
   await expect(page.getByRole('status')).toContainText('1 out of 5');
 });
 
-test('a lost confirmation retries safely and shows the original answer', async ({ page }) => {
+test('a lost confirmation can be retried with a changed answer', async ({ page }) => {
   let first = true;
   await backend(page, {
-    cowork_vote: route => {
+    cowork_vote: (route, body) => {
       if (first) {
         first = false;
         return route.abort('failed');
       }
-      return route.fulfill({ json: { score: 2, recorded: false } });
+      return route.fulfill({ json: { score: body.p_score, recorded: true } });
     },
   });
   await page.goto(questionUrl);
   await page.getByRole('button', { name: '2 out of 5' }).click();
   await expect(page.getByRole('status')).toContainText('couldn\'t confirm');
   await page.getByRole('button', { name: '5 out of 5' }).click();
-  await expect(page.getByRole('status')).toContainText('2 out of 5');
+  await expect(page.getByRole('status')).toContainText('5 out of 5');
+  await expect(page.getByRole('button', { name: '5 out of 5' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('the clicked number animates on successive answers while saving', async ({ page }) => {
+  await backend(page, {
+    cowork_vote: async (route, body) => {
+      await new Promise(resolve => setTimeout(resolve, 700));
+      return route.fulfill({ json: { score: body.p_score, recorded: true } });
+    },
+  });
+  await page.goto(questionUrl);
+  for (const score of [3, 5]) {
+    const button = page.getByRole('button', { name: `${score} out of 5` });
+    await button.click();
+    expect(await button.evaluate(item => item.getAnimations().some(animation => animation.playState === 'running'))).toBe(true);
+    for (const choice of await page.getByRole('button', { name: /out of 5/ }).all()) await expect(choice).toBeDisabled();
+    await expect(page.getByRole('status')).toContainText(`${score} out of 5`);
+    await expect(button).toBeEnabled();
+  }
+});
+
+test('button animation respects reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await backend(page);
+  await page.goto(questionUrl);
+  const button = page.getByRole('button', { name: '3 out of 5' });
+  await button.click();
+  await expect(page.getByRole('status')).toContainText('3 out of 5');
+  expect(await button.evaluate(item => item.getAnimations().length)).toBe(0);
+});
+
+test('the UI waits for the editable-answer database update', async ({ page }) => {
+  await backend(page, { cowork_question: route => route.fulfill({ json: { prompt, score: 3 } }) });
+  await page.goto(questionUrl);
+  await expect(page.getByRole('heading')).toHaveText('This survey is being updated.');
+  await expect(page.getByRole('button', { name: /out of 5/ })).toHaveCount(0);
+});
+
+test('a server-confirmed different score does not falsely confirm the new choice', async ({ page }) => {
+  await backend(page, { cowork_vote: route => route.fulfill({ json: { score: 2, recorded: true } }) });
+  await page.goto(questionUrl);
+  await page.getByRole('button', { name: '5 out of 5' }).click();
+  await expect(page.getByRole('status')).toContainText('couldn\'t confirm');
+  await expect(page.getByRole('button', { name: '5 out of 5' })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('a failed change keeps the confirmed selection and can be retried', async ({ page }) => {
+  let first = true;
+  await backend(page, {
+    cowork_question: route => route.fulfill({ json: { prompt, score: 2, editable: true } }),
+    cowork_vote: (route, body) => {
+      if (first) {
+        first = false;
+        return route.fulfill({ status: 503, body: 'Unavailable' });
+      }
+      return route.fulfill({ json: { score: body.p_score, recorded: true } });
+    },
+  });
+  await page.goto(questionUrl);
+  await page.getByRole('button', { name: '5 out of 5' }).click();
+  await expect(page.getByRole('status')).toContainText('couldn\'t confirm');
   await expect(page.getByRole('button', { name: '2 out of 5' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: '5 out of 5' })).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: '4 out of 5' }).click();
+  await expect(page.getByRole('status')).toContainText('Answer updated.');
+  await expect(page.getByRole('status')).toContainText('4 out of 5');
+  await expect(page.getByRole('status')).not.toHaveClass(/has-error/);
 });
 
 test('null vote responses do not report success', async ({ page }) => {
@@ -128,7 +201,7 @@ test('missing browser storage is not silently replaced with a fresh identity', a
 
 test('question text is rendered as text, not executable markup', async ({ page }) => {
   const unsafe = '<img src=x onerror="alert(1)"> What\'s your take?';
-  await backend(page, { cowork_question: route => route.fulfill({ json: { prompt: unsafe, score: null } }) });
+  await backend(page, { cowork_question: route => route.fulfill({ json: { prompt: unsafe, score: null, editable: true } }) });
   await page.goto(questionUrl);
   await expect(page.getByRole('heading')).toHaveText(unsafe);
   await expect(page.locator('h1 img')).toHaveCount(0);

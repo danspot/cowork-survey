@@ -6,7 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { reconcileQuestions, seedSql } from '../tools/prepare.mjs';
 import { validateResults } from '../web/shared.js';
 
-test('real PostgreSQL schema enforces isolated, immutable anonymous votes', async context => {
+test('real PostgreSQL schema keeps one editable anonymous response per browser', async context => {
   const db = new PGlite();
   try {
     await db.exec('create role anon; create role authenticated;');
@@ -27,7 +27,7 @@ test('real PostgreSQL schema enforces isolated, immutable anonymous votes', asyn
     await db.exec('set role anon');
 
     await context.test('only bearer-token RPCs are accessible', async () => {
-      assert.deepEqual(await question(first.questionToken), { prompt: first.prompt, score: null });
+      assert.deepEqual(await question(first.questionToken), { prompt: first.prompt, score: null, editable: true });
       for (const token of [unknown, first.resultsToken]) await assert.rejects(question(token), { code: 'P0002' });
       for (const token of [unknown, first.questionToken]) await assert.rejects(results(token), { code: 'P0002' });
       await assert.rejects(db.query('select * from survey_private.questions'), { code: '42501' });
@@ -51,14 +51,21 @@ test('real PostgreSQL schema enforces isolated, immutable anonymous votes', asyn
       assert.equal((await results(first.resultsToken)).total, 0);
     });
 
-    await context.test('the first answer is final, even when requests are repeated', async () => {
+    await context.test('answer changes replace the score without adding responses', async () => {
       assert.deepEqual(await vote(first.questionToken, browser, 1), { recorded: true, score: 1 });
-      assert.deepEqual(await vote(first.questionToken, browser, 5), { recorded: false, score: 1 });
-      assert.deepEqual(await vote(first.questionToken, browser, 1), { recorded: false, score: 1 });
+      assert.deepEqual(await vote(first.questionToken, browser, 5), { recorded: true, score: 5 });
+      assert.equal((await question(first.questionToken)).score, 5);
+      let summary = validateResults(await results(first.resultsToken));
+      assert.equal(summary.total, 1);
+      assert.equal(summary.average, 5);
+      assert.deepEqual(summary.distribution.map(item => item.count), [0, 0, 0, 0, 1]);
+      assert.deepEqual(await vote(first.questionToken, browser, 5), { recorded: true, score: 5 });
+      assert.equal((await results(first.resultsToken)).total, 1);
+      assert.deepEqual(await vote(first.questionToken, browser, 1), { recorded: true, score: 1 });
       assert.equal((await question(first.questionToken)).score, 1);
       assert.deepEqual(await vote(first.questionToken, randomUUID(), 2), { recorded: true, score: 2 });
       assert.deepEqual(await vote(first.questionToken, randomUUID(), 5), { recorded: true, score: 5 });
-      const summary = validateResults(await results(first.resultsToken));
+      summary = validateResults(await results(first.resultsToken));
       assert.equal(summary.total, 3);
       assert.ok(Math.abs(summary.average - 8 / 3) < 1e-10);
       assert.deepEqual(summary.distribution.map(item => item.count), [1, 1, 0, 0, 1]);

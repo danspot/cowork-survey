@@ -74,7 +74,7 @@ export async function buildSheet(manifest, mascotData, backgroundData) {
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow, noarchive"><meta name="referrer" content="no-referrer">
-<title>Cowork Survey | Private QR Sheet</title>
+<title>PPCC 2026 | Cowork Ate My Agents | Private QR Sheet</title>
 <style>
 :root{color-scheme:dark;font-family:"Segoe UI",system-ui,sans-serif;background:#080b17;color:#f6f4ff}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#080b17 url("${backgroundData}") center/cover fixed}
@@ -97,7 +97,7 @@ footer{text-align:center;color:#aaa6bf;font-size:.75rem;padding:0 20px 30px}
 </style>
 </head>
 <body>
-<header><p class="brand">COWORK / QUICK PULSE</p><div class="hero"><img src="${mascotData}" alt="" width="100" height="100"><h1>Small taps. Big feedback.</h1></div>
+<header><p class="brand">PPCC 2026 | COWORK ATE MY AGENTS</p><div class="hero"><img src="${mascotData}" alt="" width="100" height="100"><h1>Small taps. Big feedback.</h1></div>
 <p>Your presenter sheet: one question, one QR, and one separate results link. Save this file locally; its QRs and artwork work without an internet connection. Responding and viewing results require internet access.</p>
 <p class="notice"><strong>Keep this file private.</strong> It contains every results link. Do not publish it to GitHub or share it with attendees. Print hides private links; share an individual QR image instead.</p>
 <button class="print-button" type="button" onclick="window.print()">Print attendee QR sheets</button></header>

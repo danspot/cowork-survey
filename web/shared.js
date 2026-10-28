@@ -55,7 +55,7 @@ export function validateQuestion(data) {
 }
 
 export function validateVote(data) {
-  if (!data || typeof data.recorded !== 'boolean'
+  if (!data || data.recorded !== true
     || !Number.isInteger(data.score) || data.score < 1 || data.score > 5) {
     throw new Error('The server did not confirm the response.');
   }

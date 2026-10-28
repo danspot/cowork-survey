@@ -46,7 +46,7 @@ begin
     where question_token = p_question_token
       and voter_hash = pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
         p_question_token::text || ':' || p_browser_token::text, 'UTF8')), 'hex');
-  return pg_catalog.jsonb_build_object('prompt', question_text, 'score', existing_score);
+  return pg_catalog.jsonb_build_object('prompt', question_text, 'score', existing_score, 'editable', true);
 end;
 $$;
 
@@ -59,7 +59,6 @@ as $$
 declare
   identity_hash text;
   saved_score smallint;
-  inserted_count integer;
 begin
   if p_question_token is null or p_browser_token is null or p_score is null or p_score not between 1 and 5 then
     raise exception 'A valid question, browser token, and score from 1 to 5 are required.' using errcode = '22023';
@@ -74,11 +73,9 @@ begin
     p_question_token::text || ':' || p_browser_token::text, 'UTF8')), 'hex');
   insert into survey_private.responses (question_token, voter_hash, score)
     values (p_question_token, identity_hash, p_score)
-    on conflict (question_token, voter_hash) do nothing;
-  get diagnostics inserted_count = row_count;
-  select score into saved_score from survey_private.responses
-    where question_token = p_question_token and voter_hash = identity_hash;
-  return pg_catalog.jsonb_build_object('score', saved_score, 'recorded', inserted_count = 1);
+    on conflict (question_token, voter_hash) do update set score = excluded.score
+    returning score into saved_score;
+  return pg_catalog.jsonb_build_object('score', saved_score, 'recorded', true);
 end;
 $$;
 

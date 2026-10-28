@@ -26,7 +26,9 @@ function mascot() {
 
 function panel(eyebrow, title, description) {
   const section = element('section', 'panel');
-  section.append(mascot(), element('p', 'eyebrow', eyebrow), element('h1', '', title));
+  section.append(mascot());
+  if (eyebrow) section.append(element('p', 'eyebrow', eyebrow));
+  section.append(element('h1', '', title));
   if (description) section.append(element('p', 'description', description));
   app.replaceChildren(section);
   app.setAttribute('aria-busy', 'false');
@@ -99,21 +101,24 @@ async function showQuestion(config, route, current) {
     p_question_token: route.token, p_browser_token: identity,
   }));
   if (current !== generation) return;
-  const section = panel('YOUR TAKE. ONE TAP.', question.prompt, 'Choose a number from 1 to 5.');
+  if (question.editable !== true) {
+    showError('This survey is being updated.', 'Please try again in a moment.', start);
+    return;
+  }
+  const section = panel(null, question.prompt);
   const choices = element('div', 'choices');
   choices.setAttribute('role', 'group');
   choices.setAttribute('aria-label', 'Your rating, from 1 to 5');
   const status = element('div', 'vote-status');
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
-  const note = element('p', 'fine-print', 'Anonymous. One response per browser. Your answer is final.');
   let busy = false;
   let saved = question.score;
   const buttons = [];
 
   function updateButtons() {
     buttons.forEach((button, index) => {
-      button.disabled = busy || saved !== null;
+      button.disabled = busy;
       button.classList.toggle('selected', saved === index + 1);
       button.classList.toggle('not-selected', saved !== null && saved !== index + 1);
       button.setAttribute('aria-pressed', String(saved === index + 1));
@@ -121,9 +126,9 @@ async function showQuestion(config, route, current) {
     choices.setAttribute('aria-busy', String(busy));
   }
 
-  function thankYou(alreadySaved) {
+  function showSaved(title) {
     status.replaceChildren(
-      element('p', 'success-title', alreadySaved ? 'You\'re already counted.' : 'You\'re counted. Thank you!'),
+      element('p', 'success-title', title),
       element('p', 'success-detail', `Your answer: ${saved} out of 5.`),
     );
     section.classList.add('answered');
@@ -137,9 +142,16 @@ async function showQuestion(config, route, current) {
     button.setAttribute('aria-label', `${score} out of 5`);
     button.setAttribute('aria-pressed', 'false');
     button.addEventListener('click', async () => {
-      if (busy || saved !== null) return;
+      if (busy) return;
       busy = true;
       updateButtons();
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        button.animate([
+          { transform: 'scale(.92)', filter: 'drop-shadow(0 0 0 #c1acff00)' },
+          { transform: 'scale(1.15)', filter: 'drop-shadow(0 0 20px #c1acffaa)', offset: .45 },
+          { transform: 'scale(1.06)', filter: 'drop-shadow(0 0 12px #c1acff77)' },
+        ], { duration: 480, easing: 'ease-out' });
+      }
       status.classList.remove('has-error');
       status.textContent = 'Saving your answer...';
       try {
@@ -147,8 +159,10 @@ async function showQuestion(config, route, current) {
           p_question_token: route.token, p_browser_token: identity, p_score: score,
         }));
         if (current !== generation) return;
+        if (answer.score !== score) throw new Error('The server did not save the selected answer.');
+        const wasSaved = saved !== null;
         saved = answer.score;
-        thankYou(!answer.recorded);
+        showSaved(wasSaved ? 'Answer updated.' : 'You\'re counted. Thank you!');
       } catch (error) {
         if (current !== generation) return;
         console.error('[survey] Could not confirm response:', error.message);
@@ -162,8 +176,8 @@ async function showQuestion(config, route, current) {
     buttons.push(button);
     choices.append(button);
   }
-  section.append(choices, status, note);
-  if (saved !== null) thankYou(true);
+  section.append(choices, status);
+  if (saved !== null) showSaved('Your response is saved.');
   else updateButtons();
 }
 

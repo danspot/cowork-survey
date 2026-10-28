@@ -62,7 +62,8 @@ test('question imports handle BOMs, CRLFs, blanks, apostrophes, and stable URL r
 test('responses require explicit, valid confirmation and consistent result counts', () => {
   assert.throws(() => validateVote(null));
   assert.throws(() => validateVote({ score: 3 }));
-  assert.deepEqual(validateVote({ score: 3, recorded: false }), { score: 3, recorded: false });
+  assert.throws(() => validateVote({ score: 3, recorded: false }));
+  assert.deepEqual(validateVote({ score: 3, recorded: true }), { score: 3, recorded: true });
   const data = {
     prompt: 'A question', total: 0, average: null,
     distribution: [1, 2, 3, 4, 5].map(score => ({ score, count: 0 })),

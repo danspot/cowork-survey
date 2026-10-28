@@ -1,4 +1,4 @@
-# Cowork Quick Pulse
+# PPCC 2026 | Cowork Ate My Agents
 
 Mobile-first, anonymous 1-5 audience feedback. The numbered circles use the exact
 5x7 digit patterns and five accent colors from `cowork-poll.mp4`. The Cowork
@@ -29,6 +29,11 @@ The publishable key is intentionally public. It authorizes only the restricted
 RPCs; it cannot enumerate questions or read/write tables. Tables live in a
 non-exposed schema, have RLS enabled, and grant no access to browser roles.
 RPCs use a locked search path. Results tokens are hashed in the database.
+
+When updating an existing deployment, rerun `supabase\schema.sql` in the SQL
+Editor before publishing the updated frontend. This applies the editable-answer
+RPCs without reimporting questions. The frontend waits for the database to
+confirm that editing is enabled.
 
 Supabase's free plan can pause projects after a week of inactivity. Resume the
 project in its dashboard before an event. Pricing: https://supabase.com/pricing.
@@ -77,9 +82,11 @@ and a small white-backed Cowork mascot at their center.
 - A QR is a way to distribute an unlisted link, not authentication. Anyone with
   a question link can answer; anyone with a results link can see that question's
   aggregate counts. Results links must stay private.
-- Clicking a number immediately saves a final answer. Postgres enforces one
-  immutable answer per question and browser identity, including concurrent or
-  retried requests. Refreshing or opening another tab cannot change that answer.
+- Clicking a number immediately saves that answer. Another selection replaces
+  the same browser's previous answer, including after a reload or in another
+  tab. Postgres keeps one response per question and browser identity, so
+  changes and retries update the distribution without increasing the count.
+  The clicked number animates unless reduced motion is enabled.
 - Browser identity is a random UUID in local storage, not a name or email.
   The database stores a different hash per question. Clearing storage, using a
   different browser, or deliberately making new identities permits another vote.
@@ -101,7 +108,7 @@ Open http://127.0.0.1:4173. The app must be served over HTTP(S), not opened as a
 local HTML file. The separate presenter QR sheet does work from disk.
 
 Tests cover actual PostgreSQL behavior using PGlite, browser flows, mobile
-layouts, backend failures, immutable votes, private token separation, and
+layouts, backend failures, answer changes, button animation, private token separation, and
 decoding the branded QRs. Browser tests intercept backend calls; they do not
 submit fake votes to the production survey. If Chromium is missing, install
 it with `npx playwright install chromium`.
