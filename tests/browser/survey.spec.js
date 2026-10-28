@@ -61,7 +61,12 @@ async function localBackend(page, override) {
     expect(index).toBeGreaterThanOrEqual(0);
     requests.push({ index, body, origin: route.request().headers().origin });
     if (override) return override(route, index);
-    return route.fulfill({ json: summary(index === 0 ? [1, 2, 3, 8, 6] : [0, 0, 0, 0, 0]) });
+    const question = manifest.questions[index];
+    return route.fulfill({ json: question.kind === 'multiple_choice' ? {
+      prompt: question.prompt, kind: question.kind, options: question.options,
+      total: 0, average: null, distribution: question.options.map(option => ({ option, count: 0 })),
+      updatedAt: new Date().toISOString(),
+    } : { ...summary(index === 0 ? [1, 2, 3, 8, 6] : [0, 0, 0, 0, 0]), prompt: question.prompt } });
   });
   return { manifest, requests };
 }

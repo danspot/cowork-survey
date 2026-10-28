@@ -142,7 +142,13 @@ a:focus-visible,button:focus-visible{outline:3px solid white;outline-offset:3px}
 .print-button,.copy-button,.refresh-button{font:inherit;border:1px solid #8174b3;background:#242039;color:white;padding:10px;border-radius:10px;cursor:pointer;min-height:44px;font-size:.78rem}
 .print-button{flex-shrink:0}.copy-button{font-weight:650}.refresh-button{border-color:#75506d;color:#f3b8df;background:#231b30}
 button:hover{background:#342c50}button:disabled{opacity:.6;cursor:progress}
-.copy-status{font-size:.7rem;line-height:1.6;min-height:1.6em;margin:0;color:#86eabe}.has-error{color:#ffc0cf}
+.copy-status{font-size:.7rem;line-height:1.6;min-height:1.6em;margin:0;color:#86eabe}.copy-status:empty{display:none}.has-error{color:#ffc0cf}
+@media(min-width:701px) and (max-height:650px){
+header{padding-top:8px;padding-bottom:6px}.cards{gap:8px}
+.card{padding:6px;grid-template-columns:128px minmax(180px,1fr) minmax(240px,1.15fr)}.question-link{width:128px}
+.question-controls{gap:6px}h2{font-size:.9rem;line-height:1.3}
+.result-chart{gap:2px}.result-row{font-size:.64rem;line-height:12px}.result-metrics strong{font-size:1rem}
+}
 @media(max-width:700px){.card{grid-template-columns:144px minmax(0,1fr);gap:12px}.results{grid-column:1/-1}.actions{grid-template-columns:1fr}}
 @media print{ :root{color-scheme:light}body{background:white;color:#111}header,.actions,.copy-status,.results{display:none}.cards{grid-template-columns:repeat(2,minmax(0,1fr));padding:0;gap:16px}.card{display:flex;flex-direction:column;background:white;border-color:#ccc;color:#111;padding:14px}.question-controls{order:-1}h2{min-height:0;text-align:center}.question-link{width:min(100%,280px)}.qr{padding:0}}
 </style>
