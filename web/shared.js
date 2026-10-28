@@ -46,32 +46,57 @@ export function validateConfig(config) {
   return true;
 }
 
+export function isQuestionDefinition(data) {
+  if (!data || typeof data.prompt !== 'string' || !data.prompt.trim() || [...data.prompt].length > 2000) return false;
+  const kind = data.kind === undefined ? 'rating' : data.kind;
+  const options = data.options === undefined ? [] : data.options;
+  if (!Array.isArray(options)) return false;
+  if (kind === 'rating') return options.length === 0;
+  return kind === 'multiple_choice' && options.length >= 2
+    && options.every(option => typeof option === 'string' && option.trim() === option
+      && option.length > 0 && [...option].length <= 2000)
+    && new Set(options).size === options.length;
+}
+
+export function isSelection(values, options, allowEmpty = false) {
+  return Array.isArray(values) && (allowEmpty || values.length > 0)
+    && values.every(value => options.includes(value)) && new Set(values).size === values.length;
+}
+
 export function validateQuestion(data) {
-  if (!data || typeof data.prompt !== 'string' || !data.prompt.trim()
-    || !(data.score === null || (Number.isInteger(data.score) && data.score >= 1 && data.score <= 5))) {
+  if (!isQuestionDefinition(data)
+    || (data.kind === 'multiple_choice'
+      ? data.score !== null || !isSelection(data.selections, data.options, true)
+      : !(data.score === null || (Number.isInteger(data.score) && data.score >= 1 && data.score <= 5)))) {
     throw new Error('The server returned an invalid question.');
   }
   return data;
 }
 
-export function validateVote(data) {
+export function validateVote(data, question) {
   if (!data || data.recorded !== true
-    || !Number.isInteger(data.score) || data.score < 1 || data.score > 5) {
+    || (question?.kind === 'multiple_choice'
+      ? data.kind !== 'multiple_choice' || !isSelection(data.selections, question.options)
+      : (data.kind !== undefined && data.kind !== 'rating')
+        || !Number.isInteger(data.score) || data.score < 1 || data.score > 5)) {
     throw new Error('The server did not confirm the response.');
   }
   return data;
 }
 
 export function validateResults(data) {
-  if (!data || typeof data.prompt !== 'string' || !data.prompt.trim()
+  const multiple = data?.kind === 'multiple_choice';
+  if (!isQuestionDefinition(data)
     || !Number.isSafeInteger(data.total) || data.total < 0
-    || !Array.isArray(data.distribution) || data.distribution.length !== 5
-    || !data.distribution.every((row, index) => row.score === index + 1
-      && Number.isSafeInteger(row.count) && row.count >= 0)
-    || data.distribution.reduce((total, row) => total + row.count, 0) !== data.total
-    || (data.total === 0 ? data.average !== null
-      : typeof data.average !== 'number' || !Number.isFinite(data.average)
-        || Math.abs(data.average - data.distribution.reduce((sum, row) => sum + row.score * row.count, 0) / data.total) > .000001)
+    || !Array.isArray(data.distribution) || data.distribution.length !== (multiple ? data.options.length : 5)
+    || !data.distribution.every((row, index) => row && (multiple ? row.option === data.options[index] : row.score === index + 1)
+      && Number.isSafeInteger(row.count) && row.count >= 0 && row.count <= data.total)
+    || (multiple
+      ? data.average !== null || data.distribution.reduce((total, row) => total + row.count, 0) < data.total
+      : data.distribution.reduce((total, row) => total + row.count, 0) !== data.total
+        || (data.total === 0 ? data.average !== null
+          : typeof data.average !== 'number' || !Number.isFinite(data.average)
+            || Math.abs(data.average - data.distribution.reduce((sum, row) => sum + row.score * row.count, 0) / data.total) > .000001))
     || typeof data.updatedAt !== 'string'
     || !/(?:Z|[+-]\d{2}:\d{2})$/.test(data.updatedAt)
     || !Number.isFinite(Date.parse(data.updatedAt))) {

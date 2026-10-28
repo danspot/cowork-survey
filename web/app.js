@@ -88,6 +88,99 @@ async function rpc(config, operation, parameters) {
   }
 }
 
+function animateAnswer(button) {
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    button.animate([
+      { transform: 'scale(.92)', filter: 'drop-shadow(0 0 0 #c1acff00)' },
+      { transform: 'scale(1.15)', filter: 'drop-shadow(0 0 20px #c1acffaa)', offset: .45 },
+      { transform: 'scale(1.06)', filter: 'drop-shadow(0 0 12px #c1acff77)' },
+    ], { duration: 480, easing: 'ease-out' });
+  }
+}
+
+function showMultipleQuestion(config, route, current, question, identity) {
+  const section = panel(null, question.prompt);
+  const form = element('form', 'multiple-form');
+  const choices = element('fieldset', 'multiple-choices');
+  choices.setAttribute('aria-label', 'Choose one or more options');
+  const status = element('div', 'vote-status');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  const save = element('button', 'utility-button save-answer', 'Save answer');
+  save.type = 'submit';
+  let busy = false;
+  let saved = [...question.selections];
+  const inputs = question.options.map((option, index) => {
+    const label = element('label', `option-choice option-${index % 5 + 1}`);
+    const input = element('input');
+    input.type = 'checkbox';
+    input.value = option;
+    input.checked = saved.includes(option);
+    label.append(input, element('span', 'option-label', option));
+    choices.append(label);
+    input.addEventListener('change', () => {
+      status.classList.remove('has-error');
+      const draft = selection();
+      if (draft.length === saved.length && draft.every(value => saved.includes(value))) {
+        if (saved.length) showSaved('Your response is saved.');
+        else status.textContent = '';
+      } else {
+        status.textContent = draft.length ? 'Changes not saved.' : 'Select at least one option.';
+      }
+      update();
+    });
+    return input;
+  });
+  const selection = () => inputs.filter(input => input.checked).map(input => input.value);
+  function update() {
+    const draft = selection();
+    choices.disabled = busy;
+    choices.setAttribute('aria-busy', String(busy));
+    save.disabled = busy || !draft.length || (draft.length === saved.length && draft.every(value => saved.includes(value)));
+  }
+  function showSaved(title) {
+    status.replaceChildren(
+      element('p', 'success-title', title),
+      element('p', 'success-detail', `${saved.length} ${saved.length === 1 ? 'option' : 'options'} selected.`),
+    );
+    section.classList.add('answered');
+  }
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (busy || save.disabled) return;
+    const selected = selection();
+    busy = true;
+    update();
+    animateAnswer(save);
+    status.classList.remove('has-error');
+    status.textContent = 'Saving your answer...';
+    try {
+      const answer = validateVote(await rpc(config, 'cowork_choose', {
+        p_question_token: route.token, p_browser_token: identity, p_selections: selected,
+      }), question);
+      if (current !== generation) return;
+      if (answer.selections.length !== selected.length || !selected.every(value => answer.selections.includes(value))) {
+        throw new Error('The server did not save the selected options.');
+      }
+      const wasSaved = saved.length > 0;
+      saved = answer.selections;
+      showSaved(wasSaved ? 'Answer updated.' : 'You\'re counted. Thank you!');
+    } catch (error) {
+      if (current !== generation) return;
+      console.error('[survey] Could not confirm response:', error.message);
+      status.classList.add('has-error');
+      status.textContent = 'We couldn\'t confirm your answer. Save again to retry safely; you will not be counted twice.';
+    } finally {
+      busy = false;
+      if (current === generation) update();
+    }
+  });
+  form.append(element('p', 'choice-hint', 'Select all that apply.'), choices, save, status);
+  section.append(form);
+  if (saved.length) showSaved('Your response is saved.');
+  update();
+}
+
 async function showQuestion(config, route, current) {
   let identity;
   try {
@@ -103,6 +196,10 @@ async function showQuestion(config, route, current) {
   if (current !== generation) return;
   if (question.editable !== true) {
     showError('This survey is being updated.', 'Please try again in a moment.', start);
+    return;
+  }
+  if (question.kind === 'multiple_choice') {
+    showMultipleQuestion(config, route, current, question, identity);
     return;
   }
   const section = panel(null, question.prompt);
@@ -145,13 +242,7 @@ async function showQuestion(config, route, current) {
       if (busy) return;
       busy = true;
       updateButtons();
-      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        button.animate([
-          { transform: 'scale(.92)', filter: 'drop-shadow(0 0 0 #c1acff00)' },
-          { transform: 'scale(1.15)', filter: 'drop-shadow(0 0 20px #c1acffaa)', offset: .45 },
-          { transform: 'scale(1.06)', filter: 'drop-shadow(0 0 12px #c1acff77)' },
-        ], { duration: 480, easing: 'ease-out' });
-      }
+      animateAnswer(button);
       status.classList.remove('has-error');
       status.textContent = 'Saving your answer...';
       try {
@@ -191,45 +282,46 @@ async function showResults(config, route, current) {
   const average = element('strong', 'metric-value');
   const totalBlock = element('div', 'metric');
   const averageBlock = element('div', 'metric');
+  const secondaryLabel = element('span', 'metric-label');
   totalBlock.append(total, element('span', 'metric-label', 'RESPONSES'));
-  averageBlock.append(average, element('span', 'metric-label', 'AVERAGE / 5'));
+  averageBlock.append(average, secondaryLabel);
   metrics.append(totalBlock, averageBlock);
   const chart = element('div', 'chart');
   chart.setAttribute('role', 'list');
   chart.setAttribute('aria-label', 'Response distribution');
-  const rows = [];
-  for (let score = 1; score <= 5; score++) {
-    const row = element('div', 'chart-row');
-    row.setAttribute('role', 'listitem');
-    const label = element('span', 'chart-label');
-    label.innerHTML = digitSvg(score);
-    const track = element('div', 'bar-track');
-    const bar = element('div', `bar bar-${score}`);
-    track.append(bar);
-    const count = element('span', 'bar-count');
-    const percent = element('span', 'bar-percent');
-    row.append(label, track, count, percent);
-    chart.append(row);
-    rows.push({ row, bar, count, percent });
-  }
+  const note = element('p', 'fine-print selection-note', 'Multiple selections allowed. Percentages are per respondent.');
   const freshness = element('p', 'freshness');
   freshness.setAttribute('role', 'status');
   const refresh = element('button', 'utility-button', 'Refresh now');
   const actions = element('div', 'results-actions');
   actions.append(freshness, refresh);
-  section.append(metrics, chart, actions,
+  section.append(metrics, chart, note, actions,
     element('p', 'fine-print', 'Live counts refresh every 5 seconds. Keep this results link private.'));
 
   function render() {
+    const multiple = data.kind === 'multiple_choice';
+    section.querySelector('h1').textContent = data.prompt;
     total.textContent = data.total.toLocaleString();
-    average.textContent = data.average === null ? '--' : data.average.toFixed(1);
+    average.textContent = multiple ? data.distribution.reduce((sum, item) => sum + item.count, 0).toLocaleString()
+      : data.average === null ? '--' : data.average.toFixed(1);
+    secondaryLabel.textContent = multiple ? 'SELECTIONS' : 'AVERAGE / 5';
+    note.hidden = !multiple;
+    chart.replaceChildren();
     data.distribution.forEach((item, index) => {
       const percentage = data.total ? item.count / data.total * 100 : 0;
-      const row = rows[index];
-      row.bar.style.width = `${percentage}%`;
-      row.count.textContent = item.count.toLocaleString();
-      row.percent.textContent = `${Math.round(percentage)}%`;
-      row.row.setAttribute('aria-label', `${item.score} out of 5: ${item.count} responses, ${Math.round(percentage)} percent`);
+      const row = element('div', `chart-row${multiple ? ' multiple-row' : ''}`);
+      row.setAttribute('role', 'listitem');
+      const label = element('span', 'chart-label');
+      if (multiple) label.textContent = item.option;
+      else label.innerHTML = digitSvg(item.score);
+      const track = element('div', 'bar-track');
+      const bar = element('div', `bar bar-${index % 5 + 1}`);
+      bar.style.width = `${percentage}%`;
+      track.append(bar);
+      row.append(label, track, element('span', 'bar-count', item.count.toLocaleString()),
+        element('span', 'bar-percent', `${Math.round(percentage)}%`));
+      row.setAttribute('aria-label', `${multiple ? item.option : `${item.score} out of 5`}: ${item.count} responses, ${Math.round(percentage)} percent`);
+      chart.append(row);
     });
     const time = new Intl.DateTimeFormat(undefined, {
       hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
@@ -272,7 +364,7 @@ async function start() {
   refreshCurrent = undefined;
   const route = parseRoute(location.hash);
   if (!location.hash || location.hash === '#') {
-    panel('MAKE YOUR NEXT MOVE.', 'A little feedback goes a long way.', 'Scan a question\'s QR code to share your take. Five numbers. One tap. That\'s it.');
+    panel('MAKE YOUR NEXT MOVE.', 'A little feedback goes a long way.', 'Scan a question\'s QR code to share your take.');
     return;
   }
   if (!route) {
